@@ -4,9 +4,9 @@ import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
-// Load .env.local
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
 dotenv.config({ path: join(__dirname, '..', '.env.local') });
 
 // Route imports
@@ -21,12 +21,16 @@ const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:5173'],
+  origin: [
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'https://ncertbuddy.onrender.com',
+  ],
   credentials: true,
 }));
 app.use(express.json());
 
-// Routes
+// API Routes
 app.use('/api/chat', chatRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/quiz', quizRoutes);
@@ -45,6 +49,16 @@ app.use((err, req, res, next) => {
     error: true,
     message: 'Something went wrong. Please refresh the page.',
   });
+});
+
+// Serve frontend static files
+app.use(express.static(join(__dirname, '../dist')));
+
+// Catch-all: send index.html for all non-API routes (React Router)
+app.get('*', (req, res) => {
+  if (!req.path.startsWith('/api')) {
+    res.sendFile(join(__dirname, '../dist/index.html'));
+  }
 });
 
 app.listen(PORT, () => {
