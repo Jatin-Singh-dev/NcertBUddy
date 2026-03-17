@@ -2,6 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Send, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import SignupNudgeModal from './SignupNudgeModal';
+import MentalHealthPopup, {
+  containsMentalHealthKeyword,
+  MENTAL_HEALTH_SYSTEM_PROMPT,
+} from './MentalHealthPopup';
 import { useAuth } from '../context/AuthContext.jsx';
 
 const SUBJECTS_BY_CLASS = {
@@ -11,13 +15,74 @@ const SUBJECTS_BY_CLASS = {
   12: ['Maths', 'Physics', 'Chemistry', 'Biology', 'English'],
 };
 
+const SUGGESTED_QUESTIONS = {
+  Science: ['What is photosynthesis?', 'Explain the water cycle', "What are Newton's laws?"],
+  Maths: ['What is a quadratic equation?', 'Explain Pythagoras theorem', 'What are rational numbers?'],
+  Physics: ["What is Ohm's law?", 'Explain refraction of light', 'What is the law of conservation of energy?'],
+  Chemistry: ['What is a chemical bond?', 'Explain periodic table trends', 'What is electrolysis?'],
+  Biology: ['What is DNA replication?', 'Explain the human digestive system', 'What are enzymes?'],
+  English: ['Explain the theme of the chapter', 'What are literary devices?', 'Summarise the poem'],
+  'Social Science': ['What caused the French Revolution?', 'Explain democracy', 'What is globalisation?'],
+};
+
+const DEFAULT_SUGGESTIONS = ['Ask me anything from NCERT', 'Which chapter should I study?', 'Help me understand this topic'];
+
+// Render message text with inline code and code block formatting
+function renderFormattedText(text) {
+  if (!text) return null;
+
+  // Split by triple backtick code blocks first
+  const parts = text.split(/(```[\s\S]*?```)/g);
+
+  return parts.map((part, i) => {
+    // Code block
+    if (part.startsWith('```') && part.endsWith('```')) {
+      const inner = part.slice(3, -3);
+      // Remove optional language identifier on first line
+      const lines = inner.split('\n');
+      const firstLine = lines[0].trim();
+      const hasLang = firstLine && !firstLine.includes(' ') && lines.length > 1;
+      const code = hasLang ? lines.slice(1).join('\n') : inner;
+
+      return (
+        <div key={i} className="my-2 rounded-lg overflow-hidden">
+          <pre className="bg-[#1A1A2E] text-gray-100 p-4 rounded-lg text-sm font-mono overflow-x-auto whitespace-pre-wrap leading-relaxed">
+            <code>{code.trim()}</code>
+          </pre>
+        </div>
+      );
+    }
+
+    // Process inline backticks
+    const inlineParts = part.split(/(`[^`]+`)/g);
+    return (
+      <span key={i}>
+        {inlineParts.map((inline, j) => {
+          if (inline.startsWith('`') && inline.endsWith('`')) {
+            return (
+              <code
+                key={j}
+                className="bg-gray-100 text-teal-800 px-1.5 py-0.5 rounded text-[13px] font-mono"
+              >
+                {inline.slice(1, -1)}
+              </code>
+            );
+          }
+          return <span key={j}>{inline}</span>;
+        })}
+      </span>
+    );
+  });
+}
+
 const ChatbotWidget = () => {
   const { user, isAuthenticated, getAuthHeader } = useAuth();
   const [messages, setMessages] = useState([
     { 
       id: 1, 
       type: 'ai', 
-      text: 'Hi! I am your NCERT doubt solver. Ask me anything from your textbook — I will find the exact answer for you.' 
+      text: 'Hi! I am your NCERT doubt solver. Ask me anything from your textbook — I will find the exact answer for you.',
+      timestamp: new Date(),
     }
   ]);
   const [input, setInput] = useState('');
@@ -30,7 +95,12 @@ const ChatbotWidget = () => {
   const messagesEndRef = useRef(null);
   const chatContainerRef = useRef(null);
 
+  // Mental health popup state
+  const [showMentalHealthPopup, setShowMentalHealthPopup] = useState(false);
+  const [pendingMessage, setPendingMessage] = useState(null);
+
   const subjects = SUBJECTS_BY_CLASS[selectedClass];
+  const suggestions = SUGGESTED_QUESTIONS[selectedSubject] || DEFAULT_SUGGESTIONS;
 
   const handleClassChange = (cls) => {
     const c = parseInt(cls);
@@ -52,29 +122,18 @@ const ChatbotWidget = () => {
     }
   }, [isAuthenticated]);
 
-  // Scroll only INSIDE the chat container, not the whole page
+  // Smooth scroll to bottom when messages change
   useEffect(() => {
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, isTyping]);
 
-  const handleSend = async (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const userText = input.trim();
-    if (!userText || disabled) return;
-
-    // Guest limit check
-    if (!isAuthenticated && count >= 2) {
-      setShowModal(true);
-      return;
-    }
-
-    const userMsg = { id: Date.now(), type: 'user', text: userText };
+  // Core send logic (called after mental health popup if needed)
+  const sendMessage = async (userText, isMentalHealthTrigger = false) => {
+    const userMsg = { id: Date.now(), type: 'user', text: userText, timestamp: new Date() };
     setMessages(prev => [...prev, userMsg]);
-    setInput('');
-    
+
     if (!isAuthenticated) {
       const newCount = count + 1;
       setCount(newCount);
@@ -84,7 +143,6 @@ const ChatbotWidget = () => {
     setIsTyping(true);
 
     try {
-      // Build conversation history for context
       const conversationHistory = messages
         .filter(m => m.type === 'user' || m.type === 'ai')
         .slice(-6)
@@ -92,6 +150,14 @@ const ChatbotWidget = () => {
           role: m.type === 'user' ? 'user' : 'assistant',
           content: m.text,
         }));
+
+      // If mental health trigger, inject extra system context
+      if (isMentalHealthTrigger) {
+        conversationHistory.push({
+          role: 'system',
+          content: MENTAL_HEALTH_SYSTEM_PROMPT,
+        });
+      }
 
       const headers = {
         'Content-Type': 'application/json',
@@ -109,7 +175,6 @@ const ChatbotWidget = () => {
         }),
       });
 
-      // Check for JSON error responses (non-SSE)
       const contentType = response.headers.get('content-type') || '';
       if (!response.ok) {
         if (contentType.includes('application/json')) {
@@ -119,13 +184,13 @@ const ChatbotWidget = () => {
         throw new Error('Failed to get response from AI');
       }
 
-      // If response is JSON (non-streaming fallback), handle it
       if (contentType.includes('application/json')) {
         const data = await response.json();
         setIsTyping(false);
         setMessages(prev => [...prev, { 
           id: Date.now() + 1, type: 'ai', 
-          text: data.content || data.message || 'No response received.' 
+          text: data.content || data.message || 'No response received.',
+          timestamp: new Date(),
         }]);
         return;
       }
@@ -136,9 +201,8 @@ const ChatbotWidget = () => {
       let aiText = '';
       const aiMsgId = Date.now() + 1;
 
-      // Add empty AI message that we'll update
       setIsTyping(false);
-      setMessages(prev => [...prev, { id: aiMsgId, type: 'ai', text: '' }]);
+      setMessages(prev => [...prev, { id: aiMsgId, type: 'ai', text: '', timestamp: new Date() }]);
 
       let buffer = '';
       while (true) {
@@ -147,7 +211,6 @@ const ChatbotWidget = () => {
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
-        // Keep the last potentially incomplete line in buffer
         buffer = lines.pop() || '';
 
         for (const line of lines) {
@@ -170,7 +233,6 @@ const ChatbotWidget = () => {
         }
       }
 
-      // If we got no text at all, show a fallback
       if (!aiText) {
         setMessages(prev =>
           prev.map(m =>
@@ -179,7 +241,6 @@ const ChatbotWidget = () => {
         );
       }
 
-      // Show signup nudge after 2 guest messages
       if (!isAuthenticated && count + 1 >= 2) {
         setTimeout(() => setShowModal(true), 1000);
       }
@@ -189,9 +250,52 @@ const ChatbotWidget = () => {
       setMessages(prev => [...prev, { 
         id: Date.now() + 1, 
         type: 'ai', 
-        text: error.message || 'Sorry, I am having trouble connecting right now. Please try again.' 
+        text: error.message || 'Sorry, I am having trouble connecting right now. Please try again.',
+        timestamp: new Date(),
       }]);
     }
+  };
+
+  const handleSend = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const userText = input.trim();
+    if (!userText || disabled) return;
+
+    // Guest limit check
+    if (!isAuthenticated && count >= 2) {
+      setShowModal(true);
+      return;
+    }
+
+    setInput('');
+
+    // Mental health keyword check — show popup before sending
+    if (containsMentalHealthKeyword(userText)) {
+      setPendingMessage(userText);
+      setShowMentalHealthPopup(true);
+      return;
+    }
+
+    await sendMessage(userText, false);
+  };
+
+  const handleMentalHealthContinue = async () => {
+    setShowMentalHealthPopup(false);
+    if (pendingMessage) {
+      const msg = pendingMessage;
+      setPendingMessage(null);
+      await sendMessage(msg, true);
+    }
+  };
+
+  const handleMentalHealthClose = () => {
+    setShowMentalHealthPopup(false);
+    setPendingMessage(null);
+  };
+
+  const handleSuggestionClick = (question) => {
+    setInput(question);
   };
 
   const handleCloseModal = () => {
@@ -199,15 +303,19 @@ const ChatbotWidget = () => {
     if (!isAuthenticated && count >= 2) setDisabled(true);
   };
 
-  // If authenticated, never disable
   const isDisabled = isAuthenticated ? false : disabled;
   const remainingQuestions = isAuthenticated ? '∞' : Math.max(0, 2 - count);
+
+  const formatTime = (date) => {
+    if (!date) return '';
+    return new Date(date).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  };
 
   return (
     <section id="chatbot" className="py-24 bg-[#F0FDF8] px-4">
       <div className="max-w-4xl mx-auto text-center mb-12">
         <h2 className="text-4xl font-bold mb-4 font-display text-[#1A1A2E]">Try the AI doubt solver — no signup needed</h2>
-        <p className="text-lg text-body-text font-sans">Ask any NCERT question below. {isAuthenticated ? 'Unlimited questions as a member!' : '2 free questions, then sign up to continue.'}</p>
+        <p className="text-lg text-body-text font-sans">{isAuthenticated ? 'Unlimited questions as a member!' : '2 free questions, then sign up to continue.'}</p>
       </div>
 
       <div className="max-w-2xl mx-auto px-4 md:px-0">
@@ -232,7 +340,7 @@ const ChatbotWidget = () => {
           {/* Messages Area */}
           <div 
             ref={chatContainerRef}
-            className="h-[280px] md:h-[350px] overflow-y-auto p-4 md:p-6 space-y-4 bg-[#F9FAFB]"
+            className="h-[320px] md:h-[400px] overflow-y-auto p-4 md:p-6 space-y-4 bg-[#F9FAFB]"
             style={{ 
               backgroundImage: 'radial-gradient(circle, #E5E7EB 1px, transparent 1px)',
               backgroundSize: '20px 20px'
@@ -241,29 +349,63 @@ const ChatbotWidget = () => {
             {messages.map((msg) => (
               <div 
                 key={msg.id} 
-                className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start items-start'}`}
+                className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}
               >
-                <div 
-                  className={`max-w-[85%] md:max-w-[80%] p-3 md:p-4 rounded-2xl font-sans text-sm md:text-[15px] leading-relaxed whitespace-pre-wrap ${
-                    msg.type === 'user' 
-                      ? 'bg-teal-primary text-white rounded-tr-none' 
-                      : 'bg-teal-50 text-headline rounded-tl-none'
-                  }`}
-                >
-                  {msg.text}
-                </div>
+                {msg.type === 'ai' && (
+                  <div className="flex items-start gap-2 max-w-[85%] md:max-w-[80%]">
+                    {/* NB Avatar */}
+                    <div className="w-9 h-9 bg-teal-primary rounded-full flex items-center justify-center text-white text-[13px] font-bold shrink-0 mt-0.5">
+                      NB
+                    </div>
+                    <div>
+                      <div className="bg-[#F0FDFA] border border-[#99F6E4] p-3 md:p-4 rounded-tl-none rounded-tr-2xl rounded-br-2xl rounded-bl-2xl font-sans text-sm md:text-[15px] leading-relaxed text-headline whitespace-pre-wrap">
+                        {renderFormattedText(msg.text)}
+                      </div>
+                      <p className="text-[10px] text-gray-400 mt-1 ml-1 font-sans">{formatTime(msg.timestamp)}</p>
+                    </div>
+                  </div>
+                )}
+
+                {msg.type === 'user' && (
+                  <div className="max-w-[85%] md:max-w-[80%]">
+                    <div className="bg-teal-primary text-white p-3 md:p-4 rounded-tl-2xl rounded-tr-none rounded-br-2xl rounded-bl-2xl font-sans text-sm md:text-[15px] leading-relaxed whitespace-pre-wrap">
+                      {msg.text}
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-1 text-right mr-1 font-sans">{formatTime(msg.timestamp)}</p>
+                  </div>
+                )}
               </div>
             ))}
+
+            {/* Typing indicator with NB avatar */}
             {isTyping && (
               <div className="flex justify-start">
-                <div className="bg-teal-50 p-3 md:p-4 rounded-2xl rounded-tl-none flex gap-1">
-                  <span className="w-1.5 h-1.5 bg-teal-primary rounded-full animate-bounce" />
-                  <span className="w-1.5 h-1.5 bg-teal-primary rounded-full animate-bounce [animation-delay:0.2s]" />
-                  <span className="w-1.5 h-1.5 bg-teal-primary rounded-full animate-bounce [animation-delay:0.4s]" />
+                <div className="flex items-start gap-2">
+                  <div className="w-9 h-9 bg-teal-primary rounded-full flex items-center justify-center text-white text-[13px] font-bold shrink-0 mt-0.5">
+                    NB
+                  </div>
+                  <div className="bg-[#F0FDFA] border border-[#99F6E4] p-3 md:p-4 rounded-tl-none rounded-tr-2xl rounded-br-2xl rounded-bl-2xl flex items-center gap-1.5">
+                    <span className="w-2 h-2 bg-teal-primary rounded-full inline-block" style={{ animation: 'nb-bounce 0.6s infinite', animationDelay: '0s' }} />
+                    <span className="w-2 h-2 bg-teal-primary rounded-full inline-block" style={{ animation: 'nb-bounce 0.6s infinite', animationDelay: '0.15s' }} />
+                    <span className="w-2 h-2 bg-teal-primary rounded-full inline-block" style={{ animation: 'nb-bounce 0.6s infinite', animationDelay: '0.3s' }} />
+                  </div>
                 </div>
               </div>
             )}
             <div ref={messagesEndRef} />
+          </div>
+
+          {/* Suggested Questions */}
+          <div className="hidden sm:flex gap-2 px-4 md:px-6 pt-3 overflow-x-auto no-scrollbar">
+            {suggestions.map((q, i) => (
+              <button
+                key={i}
+                onClick={() => handleSuggestionClick(q)}
+                className="whitespace-nowrap px-4 py-2 bg-white border border-teal-200 text-teal-primary rounded-full text-[13px] font-medium hover:bg-teal-50 transition-colors shrink-0 font-sans"
+              >
+                {q}
+              </button>
+            ))}
           </div>
 
           {/* Input Area */}
@@ -309,6 +451,22 @@ const ChatbotWidget = () => {
         isOpen={showModal} 
         onClose={handleCloseModal} 
       />
+
+      <MentalHealthPopup
+        isOpen={showMentalHealthPopup}
+        onContinue={handleMentalHealthContinue}
+        onClose={handleMentalHealthClose}
+      />
+
+      {/* Typing indicator animation */}
+      <style>{`
+        @keyframes nb-bounce {
+          0%, 60%, 100% { transform: translateY(0); }
+          30% { transform: translateY(-8px); }
+        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      `}</style>
     </section>
   );
 };
