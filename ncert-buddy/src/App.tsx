@@ -13,6 +13,7 @@ import DashboardPage from './pages/DashboardPage';
 import QuizPage from './pages/QuizPage';
 import PapersPage from './pages/PapersPage';
 import SettingsPage from './pages/SettingsPage';
+import TutorialsPage from './pages/TutorialsPage';
 
 // Protected route — redirects to login if not authenticated
 function ProtectedRoute({ children }) {
@@ -70,6 +71,7 @@ export default function App() {
           <PublicRoute><SignupPage /></PublicRoute>
         } />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/tutorials" element={<TutorialsPage />} />
         <Route path="/dashboard" element={
           <ProtectedRoute><DashboardPage /></ProtectedRoute>
         } />
