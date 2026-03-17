@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { Home, MessageSquare, Zap, FileText, Settings, Share2, LogOut } from 'lucide-react';
+import { Home, MessageSquare, Zap, Play, FileText, Settings, Share2, LogOut } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 
@@ -20,6 +20,7 @@ const Sidebar = ({ activeItem = 'Dashboard' }) => {
     { id: 'Dashboard', icon: Home, label: 'Dashboard', href: '/dashboard' },
     { id: 'AI Chatbot', icon: MessageSquare, label: 'AI Chatbot', href: '/#chatbot' },
     { id: 'Daily Quiz', icon: Zap, label: 'Daily Quiz', href: '/quiz' },
+    { id: 'Tutorials', icon: Play, label: 'Tutorials', href: '/tutorials' },
     { id: 'Papers', icon: FileText, label: 'Papers', href: '/papers' },
     { id: 'Settings', icon: Settings, label: 'Settings', href: '/settings' },
   ];
