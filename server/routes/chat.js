@@ -33,6 +33,7 @@ async function getEmbedding(text) {
   return embedding;
 }
 
+
 // Search documents by vector similarity
 async function searchDocuments(queryEmbedding, userClass, subject, chapter) {
   const embeddingStr = `[${queryEmbedding.join(',')}]`;
