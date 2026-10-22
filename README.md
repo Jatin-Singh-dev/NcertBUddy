@@ -1,8 +1,4 @@
-<<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
-
-# NCERT Buddy: RAG-Based Educational Chatbot
+<<# NCERT Buddy: RAG-Based Educational Chatbot
 
 NCERT Buddy is a conversational agent designed to answer student queries based strictly on the Indian NCERT curriculum (Classes 6-12). 
 
@@ -10,8 +6,8 @@ To ensure factual accuracy and mitigate model hallucination, this project utiliz
 
 ## Architecture & Tech Stack
 
-* **Runtime Environment:** Node.js[span_0](start_span)[span_0](end_span)
-* **LLM Engine:** Gemini API[span_1](start_span)[span_1](end_span)
+* **Runtime Environment:** Node.js
+* **LLM Engine:** Gemini API
 * **System Pipeline:** Document Ingestion $\rightarrow$ Text Chunking $\rightarrow$ Context Retrieval $\rightarrow$ Prompt Injection
 
 ## Core Features
@@ -22,8 +18,11 @@ To ensure factual accuracy and mitigate model hallucination, this project utiliz
 
 ## Local Setup
 
-**Prerequisites:** Node.js[span_2](start_span)[span_2](end_span)
+**Prerequisites:** Node.js
 
 **1. Install dependencies:**
 ```bash
 npm install
+Run the app:
+npm run dev
+
